@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
-# from xbbg import blp
-import yfinance as yf
+from xbbg import blp
 
 color_list = [
+    (0, 0, 0),  # dummy color
     (130, 110, 70),  # Brown
     (168, 154, 126),  # other brown
     (205, 197, 181),  # ..
@@ -38,90 +38,91 @@ MPL_COLORS = convert_to_matplotlib_colors()
 
 
 class BarChart:
-    def __init__(self, df, plot_type, sort, y_axis, source, name, name_legend, display_value):
-        self.df = df
-        self.plot_type = plot_type
-        self.sort = sort
-        self.y_axis = y_axis
-        self.source = source
-        self.name = name
-        self.name_legend = name_legend
-        self.display_value = False
+    """
+    This is a parent class for Barchart. There are calculations and some general values that can be used for both,
+    vertical and horizontal barchart. "self" represent an instance of the class
+    """
 
-        self.n_rows = len(self.df)  # number of tickers
-        self.n_cols = len(self.df.columns)  # number of fields
-        self.labels = df.index  # list of ticker names
-
-        # self.size = round(1 / self.n_cols - 0.1, 2)
-        self.size = round(1 / self.n_cols, 2)  # size of a single bar
+    def __init__(self, df, plot_type, sort, y_axis, source, name, legend_labels):
+        # So most of the chart layout values are the same for both types of graph and they are calculated below
+        self.n_tickers = len(df)  # number of tickers
+        self.n_fields = len(df.columns)  # number of fields
+        self.size = round(1 / self.n_fields, 2)  # size of a single bar
         self.gap = self.size * 1  # gap between groups, might need to change it based on number of tickers
+        self.bar_group_position = np.zeros(self.n_tickers)  # initialize empty list for bar groups position
+        self.initial_location = self.bar_group_position  # save initial bar location
+        for i in range(self.n_tickers):  # calculates bar groups position
+            self.bar_group_position[i] = round((self.size * self.n_fields + self.gap) * i, 2)
 
-        self.x = np.zeros(self.n_rows)  # initialize empty list for bar groups position
-        self.initial_location = self.x  # save initial bar location
-        for i in range(self.n_rows): self.x[i] = round((self.size * self.n_cols + self.gap) * i, 2)
-
-        self.label_position = self.x + (self.size * self.n_cols) / 2  # x label positions (middle of the bar(s))
+        # x label position in the middle of the group
+        self.label_position = self.bar_group_position + (self.size * self.n_fields) / 2
 
         self.fig, self.ax = plt.subplots(figsize=(12, 8))  # initialize matplotlib figure
-        plt.figtext(0.86, 0.02, f'Source: {source} Date: {datetime.today().date().strftime("%d/%m/%Y")}', ha='center',
-                    fontsize=6)
-        plt.title(name, loc='left')
 
-        if display_value == 'o':
-            self.display_value = True
+        # Put Source and Date at the bottom right corner
+        self.t = plt.figtext(0.86, 0.02, f'Source: {source} Date: {datetime.today().date().strftime("%d/%m/%Y")}',
+                             ha='center',
+                             fontsize=6)
+        plt.title(name, loc='left')  # set chat name
+
+        # If legend_labels is nothing, use default field values, which are column names
+        if legend_labels[0] == '':
+            self.legend_labels = df.columns
+        else:
+            self.legend_labels = legend_labels
 
         # Figure borders
-        self.ax.spines['top'].set_visible(False)
-        self.ax.spines['right'].set_visible(False)
-        self.ax.spines['left'].set_visible(False)
+        self.ax.spines[['top', 'right', 'left']].set_visible(False)
 
-        # Where to show y-axis
-        if self.y_axis == 'r': self.ax.tick_params(labelright=True, right=True, labelleft=False, left=False)
-        if self.y_axis == 'b': self.ax.tick_params(labelright=True, right=True)
+        # Where to show y-axis, default l
+        if y_axis == 'r' or y_axis == 'R': self.ax.tick_params(labelright=True, right=True, labelleft=False, left=False)
+        if y_axis == 'b' or y_axis == 'B': self.ax.tick_params(labelright=True, right=True)
 
-        # Sort if needed
-        if self.sort == 'a': self.df.sort_values(by=self.df.columns[0], axis=0, inplace=True, ascending=True)
-        if self.sort == 'd': self.df.sort_values(by=self.df.columns[0], axis=0, inplace=True, ascending=False)
+        # Sort if needed, sorts by first field values
+        if sort == 'a' or sort == 'A':
+            df.sort_values(by=df.columns[0], axis=0, inplace=True, ascending=True)
+        elif sort == 'd' or sort == 'D':
+            df.sort_values(by=df.columns[0], axis=0, inplace=True, ascending=False)
+        self.labels = df.index  # Ticker names in order
 
         # Stacked BarChart Settings
-        if self.plot_type == 's':
+        if plot_type == 's' or plot_type == 'S':
             self.align = 'center'
-            self.y_offset = np.zeros(self.n_rows)
+            self.y_offset = np.zeros(self.n_tickers)  # distance at which next bar should be placed if stacked plot
         else:
             self.y_offset = None
             self.align = 'edge'
 
 
 class HorizontalBarChart(BarChart):
-    def __init__(self, df, plot_type, sort, y_axis, source, name, name_legend, display_value):
-        super().__init__(df, plot_type, sort, y_axis, source, name, name_legend, display_value)
+    def __init__(self, df, plot_type, sort, y_axis, source, name, legend_labels, display_value):
+        super().__init__(df, plot_type, sort, y_axis, source, name, legend_labels)
 
         y_locations = self.initial_location
         plt.grid(b=True, which='major', axis='x', color='grey', alpha=.5)
         for i, col in enumerate(df.columns, 1):
-            self.ax.barh(y_locations, df[col], height=self.size, label=col, align=self.align, left=self.y_offset,
+            self.ax.barh(y_locations,
+                         df[col], height=self.size, label=col, align=self.align, left=self.y_offset,
                          color=MPL_COLORS[i], edgecolor='white', linewidth=1)
             if plot_type == 's':
                 self.y_offset += df[col]
             else:
-                y_locations = self.x + self.size * i
+                y_locations = self.bar_group_position + self.size * i
 
-        self.ax.legend(loc='lower left', bbox_to_anchor=(0, -0.14), ncol=5, frameon=False)
-        if self.display_value:
+        # self.ax.legend(loc='lower left', bbox_to_anchor=(0, -0.14), ncol=5, frameon=False)
+        if display_value == 'o' or display_value == 'O':
             for container in self.ax.containers: self.ax.bar_label(container, fmt='%.1f', padding=3)
         if plot_type == 's':
             plt.yticks(self.initial_location, self.labels)
         else:
             plt.yticks(self.label_position, self.labels)
-        # self.fig.savefig('charts/211021/' + name + '.png', bbox_inches='tight', transparent=True)
-        plt.show()
-
-        self.fig.savefig(rf'{name}' + '.png')
+        self.ax.legend(loc='lower left', bbox_to_anchor=(0, -0.14), ncol=5, frameon=False, labels=self.legend_labels)
+        self.fig.savefig('charts/211021/' + name + '.png', bbox_inches='tight', transparent=True)
 
 
 class VerticalBarChart(BarChart):
-    def __init__(self, df, plot_type, sort, y_axis, source, name, name_legend, display_value):
-        super().__init__(df, plot_type, sort, y_axis, source, name, name_legend, display_value)
+    def __init__(self, df, plot_type, sort, y_axis, source, name, legend_labels, display_value):
+        super().__init__(df, plot_type, sort, y_axis, source, name, legend_labels)
 
         x_location = self.initial_location
         plt.grid(b=True, which='major', axis='y', color='grey', alpha=.5)
@@ -131,17 +132,29 @@ class VerticalBarChart(BarChart):
             if plot_type == 's':
                 self.y_offset += df[col]
             else:
-                x_location = self.x + self.size * i
+                x_location = self.bar_group_position + self.size * i
 
-        self.ax.legend(loc='lower left', bbox_to_anchor=(0, -0.14), ncol=5, frameon=False)
-        if self.display_value:
-            for container in self.ax.containers: self.ax.bar_label(container, fmt='%.1f', padding=3)
+        if self.n_tickers > 13:  # if more than tickers -> rotate labels
+            rotation = 90
+            self.ax.legend(loc='lower left', ncol=5, bbox_to_anchor=(0, -0.4), frameon=False, labels=self.legend_labels)
+            self.t.set_position((0.86, -0.15))
+        else:  # less than tickers -> break them into lines
+            self.labels = self.labels.str.replace(' ', '\n')  # replaces space between words wth new line character
+            rotation = 0
+            self.ax.legend(loc='lower left', ncol=5, bbox_to_anchor=(0, -0.18), frameon=False,
+                           labels=self.legend_labels)
+
+        # Values on the top of the bar if neeed
+        if display_value == 'o' or display_value == 'O':
+            for container in self.ax.containers:
+                self.ax.bar_label(container, fmt='%.1f', padding=3)
+
         if plot_type == 's':
-            plt.xticks(self.initial_location, self.labels)
+            plt.xticks(self.initial_location, self.labels, rotation=rotation)
         else:
-            plt.xticks(self.label_position, self.labels)
-        # self.fig.savefig('charts/211021/' + name + '.png', bbox_inches='tight', transparent=True)
-        plt.show()
+            plt.xticks(self.label_position, self.labels, rotation=rotation)
+
+        self.fig.savefig('charts/211021/' + name + '.png', bbox_inches='tight', transparent=True)
 
 
 def get_excel(path='BarLoader_B.xlsx'):
@@ -173,31 +186,6 @@ def get_excel(path='BarLoader_B.xlsx'):
     return df
 
 
-def get_data_yf(tickers):
-    fields = ['operatingMargins', 'revenueGrowth', 'currentRatio', 'quickRatio']
-
-    yf_dict = {i: [] for i in tickers}
-    for ticker in tickers:
-        data = yf.Ticker(ticker).info
-        yf_dict[ticker].append(data[fields[0]])
-        yf_dict[ticker].append(data[fields[1]])
-        yf_dict[ticker].append(data[fields[2]])
-        yf_dict[ticker].append(data[fields[3]])
-
-    yf_df = pd.DataFrame(yf_dict, index=fields).T
-    # print(yf_df.columns)
-    # return
-    return yf_df
-
-
-def get_data_example():
-    with open('example.pkl', 'rb') as f:
-        df = pickle.load(f)
-
-    # return df.drop('current_trr_ytd', axis=1)
-    return df
-
-
 def get_tickers(row):
     tickers = []
     ticker_names = {}
@@ -205,8 +193,7 @@ def get_tickers(row):
         if col_name.startswith('ticker') and row[col_name] != '':
             tickers.append(row[col_name])
             ticker_names[row[col_name]] = row[i + 1]
-    print(ticker_names)
-    return tickers
+    return tickers, ticker_names
 
 
 def check_override_value(value):
@@ -228,9 +215,38 @@ def check_override_value(value):
         except Exception as e:
             results.append(i.strip())
     return results
+    if isinstance(value, int):
+        return [str(value)]
+    value = [i.strip() for i in value.split(',')]
+    results = []
+    for i in value:
+        try:
+            results.append(pd.to_datetime(i).strftime('%Y%m%d').strip())
+        except Exception as e:
+            results.append(i.strip())
+    return results
 
 
-def get_data(ticker, fields, override):
+def get_override(row):
+    overrides = []
+    fields = []
+    for i, col_name in enumerate(row.index):
+        cell = row[col_name]
+        actual_override = {}
+        if col_name.startswith('field_') and cell != '':
+            cell = cell.split(',')
+            for value in cell:
+                fields.append(value.strip())
+        if col_name.startswith('override_') and cell != '':
+            cell = cell.split(',')
+            for value in cell:
+                k, v = value.strip().split('=')
+                actual_override[k] = v
+            overrides.append(actual_override)
+    return fields, overrides
+
+
+def get_data(ticker, fields, override, legend_labels):
     """
     Downloads data using blp.bpd
     :param ticker: str/list, ticker(s) name(s)
@@ -238,7 +254,13 @@ def get_data(ticker, fields, override):
     :param override: dictionary, override values
     :return: data to plot
     """
-    data = blp.bdp(tickers=ticker, flds=fields, **override)
+    data = pd.DataFrame()
+    for idx, field in enumerate(fields):
+        try:
+            temp = blp.bdp(tickers=ticker, flds=field, **override[idx])
+        except Exception:
+            temp = blp.bdp(tickers=ticker, flds=field)
+        data[legend_labels[idx]] = temp
     return data
 
 
@@ -255,41 +277,45 @@ def get_data_bdh(ticker, fields, start_date, end_date, override):
 def run():
     df = get_excel()
     for idx, row in df.iterrows():
+        # if idx == 8:
         name = str(row['name'])
-        fields = [i.strip() for i in row.fields.split(',')]  # if multiple entries this will be split into list
-        override_value = check_override_value(row.override_value)
-        name_legend = [i.strip() for i in row.name_legend.split(',')]
-        tickers = get_tickers(row)
-        print(tickers)
-        break
+        fields, override = get_override(row)
+        legend_labels = [i.strip() for i in row.legend_labels.split(',')]
+        tickers, ticker_names = get_tickers(row)
 
-        data = get_data_yf(tickers)
-        # print(data)
-        # data.index = ['kekw', 'asd']
-        # print(data)
+        if override == []: override = [{}]
 
-        # if row.override == '' or row.override_value == ['']:
-        #     override = {}
-        # else:
-        #     override_fields = [i.strip() for i in row.override.split(', ')]
-        #     override = dict(zip(override_fields, override_value))
-        #
-        # try:
-        #     if row.start_date != '':
-        #         data = get_data_bdh(tickers, fields, row.start_date, row.end_date, override)
-        #     else:
-        #         data = get_data(tickers, fields, override)
-        # except Exception as e:
-        #     print(f'Exception: {e}\nError on downloading data: {name}')
+        try:
+            if row.start_date != '':
+                data = get_data_bdh(tickers, fields, row.start_date, row.end_date, override)
+            else:
+                data = get_data(tickers, fields, override, legend_labels)
+        except Exception as e:
+            print(f'Exception: {e}\nError on downloading data: {name}')
+
+        data.index = data.index.map(ticker_names)
 
         if row.orientation.lower() == 'h':
-            HorizontalBarChart(data, row.plot_type, row.sorting, row.y_axis, row.source, name, name_legend,
+            HorizontalBarChart(data,
+                               row.plot_type,
+                               row.sorting,
+                               row.y_axis,
+                               row.source,
+                               name,
+                               legend_labels,
                                row.display_value)
         else:
-            VerticalBarChart(data, row.plot_type, row.sorting, row.y_axis, row.source, name, name_legend,
+            VerticalBarChart(data,
+                             row.plot_type,
+                             row.sorting,
+                             row.y_axis,
+                             row.source,
+                             name,
+                             legend_labels,
                              row.display_value)
+
         print(idx, name, 'completed')
-        break
+        if idx == 10: break
 
 
 if __name__ == '__main__':
