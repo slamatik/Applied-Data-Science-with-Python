@@ -282,3 +282,29 @@ def run():
 
 if __name__ == '__main__':
     run()
+
+def get_override(row):
+    overrides = []
+    fields = []
+    for i, col_name in enumerate(row.index):
+        cell = row[col_name]
+        actual_override = {}
+        if col_name.startswith('field_') and cell != '':
+            fields.append(cell)
+        if col_name.startswith('override_') and cell != '':
+            cell = cell.split(',')
+            for value in cell:
+                k, v = value.strip().split('=')
+                actual_override[k] = v
+            overrides.append(actual_override)
+    return fields, overrides
+
+
+df = get_excel()
+
+for idx, row in df.iterrows():
+    fields, overrides = get_override(row)
+    for idx, i in enumerate(overrides):
+        print(fields[idx], overrides[idx])
+
+    if idx == 1: break
